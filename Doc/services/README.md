@@ -99,7 +99,7 @@ These three modules are used by every service but are not microservices themselv
 |---|---|
 | `src/common/` | `Settings.from_env()`, `connect()` (psycopg), `log_api_call`, `get_logger`, ID generators (`run_id`, `candidate_id`, `project_id_for`, ...) |
 | `src/contracts/` | Frozen Pydantic models flowing between services: `Candidate`, `Evaluation`, `SelectionDecision`, `GeneratedContent`, `MediaAsset`, `PostPackage`, `PipelineRun` |
-| `src/ai_gateway/` | Provider adapters for LLMs (Claude / Gemini / OpenAI) + image generation (OpenAI). Centralized observability via `api_calls` |
+| `src/ai_gateway/` | OpenAI adapter for LLM calls and image generation. Centralized observability via `api_calls` |
 
 ## How to read these docs
 

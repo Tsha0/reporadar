@@ -8,7 +8,17 @@ def test_cli_help_prints_v2_commands(capsys):
         main(["--help"])
     assert excinfo.value.code == 0
     out = capsys.readouterr().out
-    for cmd in ("scan-repos", "scan-hackathons", "evaluate", "run", "submit", "serve", "daemon", "verify-env"):
+    for cmd in (
+        "scan-repos",
+        "scan-hackathons",
+        "evaluate",
+        "run",
+        "submit",
+        "publish",
+        "serve",
+        "daemon",
+        "verify-env",
+    ):
         assert cmd in out
 
 
@@ -25,3 +35,12 @@ def test_submit_has_channels_flag_not_evaluate_flag(capsys):
     out = capsys.readouterr().out
     assert "--channels" in out
     assert "--evaluate" not in out
+
+
+def test_publish_command_has_post_id_and_dry_run(capsys):
+    """publish takes a positional post_id and an optional --dry-run."""
+    with pytest.raises(SystemExit):
+        main(["publish", "--help"])
+    out = capsys.readouterr().out
+    assert "post_id" in out
+    assert "--dry-run" in out

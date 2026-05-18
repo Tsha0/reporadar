@@ -1,0 +1,48 @@
+{
+  "post_id": "post_linkedin_412e2fa5",
+  "project_id": "proj_535ebd1671c9",
+  "candidate_id": "cand_88fcb78e",
+  "run_id": "run_8b99a686-b00f-47ba-8c09-a48e8f82be9d",
+  "channel": "linkedin",
+  "status": "ready_for_review",
+  "content": {
+    "channel": "linkedin",
+    "content_format": "commentary",
+    "text": "openclaw/openclaw is a personal AI assistant that can speak and listen across macOS, iOS, and Android \u2014 and render a live Canvas that you control.\n\nThat\u2019s the part that caught my attention.\n\nOpenClaw is positioning itself less like \u201canother chatbot UI\u201d and more like an assistant you run on your own devices. The repo summary describes it as \u201cyour own personal AI assistant\u201d that answers through the channels you already use, with an \u201cown your data\u201d angle.\n\nIt\u2019s written in TypeScript, and the architecture described in the repo context is interesting: the Gateway is only the control plane. The actual product is the assistant running across devices and interaction surfaces.\n\nIn plain terms, that suggests a split between:\n- a coordination layer for routing/control\n- device-level clients for voice input/output\n- channel integrations where the assistant can respond\n- a live Canvas interface for visual, user-controlled interaction\n\nThat mix is why developers may want to watch it. A lot of assistant projects stop at chat. OpenClaw appears to be exploring something closer to a cross-platform personal runtime: voice, channels, local devices, and an interactive surface.\n\nCaveat: there\u2019s no stars or growth signal available here, and this was manually flagged as worth featuring. So treat this as an early discovery, not a popularity signal.\n\nStill, the design question is a good one: should a personal AI assistant live in one app, or across the devices and channels you already use?\n\nWhat would you want from a self-hosted personal assistant before you\u2019d actually run it daily?\n\nFollow RepoRadar for more developer projects worth a closer look.\n\n#OpenSource #TypeScript #AI #Developers",
+    "hook": null,
+    "body": null,
+    "cta": null,
+    "hashtags": [],
+    "source_links": [
+      "https://github.com/openclaw/openclaw"
+    ],
+    "character_count": 1691,
+    "generated_at": "2026-05-17T01:56:51.525078Z",
+    "model": "gpt-5.5",
+    "prompt_version": "linkedin_repo_v4",
+    "content_version": 1
+  },
+  "media": [
+    {
+      "asset_id": "asset_60248e01",
+      "asset_type": "poster",
+      "channel": "linkedin",
+      "local_path": "output/linkedin_openclaw-openclaw_20260517-015651.jpg",
+      "uri": null,
+      "mime_type": "image/jpeg",
+      "width": 1024,
+      "height": 1536,
+      "aspect_ratio": "2:3",
+      "alt_text": "RepoRadar linkedin poster for openclaw/openclaw. Your own personal AI assistant.",
+      "image_prompt_version": "linkedin_poster_v3",
+      "generated_by": "openai_image",
+      "generated_at": "2026-05-17T01:57:35.731916Z",
+      "content_hash": null
+    }
+  ],
+  "source_links": [
+    "https://github.com/openclaw/openclaw"
+  ],
+  "review_notes": null,
+  "created_at": "2026-05-17T01:57:35.731966Z"
+}

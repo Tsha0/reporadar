@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Discovery + post-generation pipeline for promising open-source projects. Discovers GitHub repos via the Search API + hackathon projects via Devpost scrape, evaluates both pools with a pluggable LLM (Claude, Gemini, or OpenAI), generates per-channel captions and posters (Instagram 1:1, LinkedIn 2:3), and writes one `posted_repositories` row per selected project. **Posts are saved locally for human review** — no automatic upload or publishing. APScheduler daemon runs the pipeline daily.
+Discovery + post-generation pipeline for promising open-source projects. Discovers GitHub repos via the Search API + hackathon projects via Devpost scrape, evaluates both pools with OpenAI, generates per-channel captions and posters (Instagram 1:1, LinkedIn 2:3), and writes one `posted_repositories` row per selected project. **Posts are saved locally for human review** — no automatic upload or publishing. APScheduler daemon runs the pipeline daily.
 
 The codebase is organized as v2 microservice modules (see `Doc/reporadar_v2_architecture.md`). Each top-level folder under `src/` is one service.
 
@@ -43,6 +43,7 @@ python -m src scan-hackathons               # Devpost scrape → candidate_repos
 python -m src evaluate                      # LLM-evaluate pending candidates
 python -m src run                           # Full pipeline (discover → evaluate → select → generate → render → export)
 python -m src submit <url>                  # Manually submit a GitHub/Devpost URL
+python -m src publish <post_id> [--dry-run] # Publish an exported PostPackage to LinkedIn via Posts API
 python -m src serve                         # Read-only monitoring dashboard
 python -m src daemon                        # APScheduler daemon
 python -m src verify-env                    # Smoke-test all configured external services
@@ -64,7 +65,7 @@ There are **6 microservices** plus 3 shared infra modules (`common/`, `contracts
 src/
 ├── common/                          # Settings, Postgres connection, logger, IDs
 ├── contracts/                       # Cross-service Pydantic models (frozen)
-├── ai_gateway/                      # LLM + image-provider adapters
+├── ai_gateway/                      # OpenAI LLM + image adapters
 │
 ├── candidate_intelligence/          # Service 1: "what should we post next?"
 │   ├── service.py                   #   top-level: discover_evaluate_and_select
@@ -112,7 +113,7 @@ src/
       package = generate_post_package(conn, settings, run_id, candidate, evaluation, provider, channel=channel)
   publish_packages(conn, settings, candidate=..., evaluation=..., selection=..., packages=...)
   ```
-- **`OPENAI_API_KEY` is always required** even when `LLM_PROVIDER` is `claude` or `gemini`, because image generation goes through `OpenAIImageClient` regardless. `Settings.provider_key_present` enforces this at config-load time.
+- **`OPENAI_API_KEY` is always required** for both LLM calls and image generation. `Settings.openai_key_present` enforces this at config-load time.
 - **Discovery upserts every search hit** (eligible or not) to `candidate_repository_evaluations` so the next run has a baseline for delta calc.
 - **Adding a new channel** = adding a new file in three places (one per Content Generation stage):
   `text/channels/<channel>.py`, `media/channels/<channel>.py` (+ entry in `media/channels/__init__.PROFILES`), `packaging/channels/<channel>.py` (+ entry in `packaging/channels/__init__.VALIDATORS`). No orchestrator change required.
@@ -137,9 +138,9 @@ Plus operational `pipeline_runs` and `api_calls` tables.
 
 `canonical_repo_key` is the universal cross-source identity: `github:owner/repo` or `devpost:<slug>`. `project_id` is derived deterministically from `canonical_repo_key` via SHA-1 (see `src/common/ids.project_id_for`), so the same repo discovered across many runs maps to one project identity without a lookup table.
 
-### LLM provider abstraction (`src/ai_gateway/llm/`)
+### OpenAI gateway (`src/ai_gateway/`)
 
-`LLM_PROVIDER=claude|gemini|openai` selects between `ClaudeProvider`, `GeminiProvider`, and `OpenAIProvider`. Default is `openai`. All providers expose `generate(prompt, system) -> str` and log to `api_calls` via `_BaseProvider._log_call`.
+OpenAI is the only supported AI provider. `OpenAIProvider` handles text/LLM calls and `OpenAIImageClient` handles image generation. Both log to `api_calls`.
 
 ### Channels
 

@@ -6,9 +6,7 @@ flask>=3.0
 gunicorn>=21.2
 psycopg[binary]>=3.2
 
-# llm providers (one of these is required at runtime)
-anthropic>=0.40
-google-generativeai>=0.8.0
+# AI provider
 openai>=1.100.0
 
 # discovery
@@ -20,6 +18,11 @@ Pillow>=10.0
 
 # scheduling
 apscheduler>=3.10
+
+# publishing: image hosting for Instagram (S3-compatible — R2/S3/B2)
+# Lazy-imported by src/publishing/image_host.py — only required at runtime
+# when IG publishing actually fires.
+boto3>=1.34
 
 # tests
 pytest>=8.0

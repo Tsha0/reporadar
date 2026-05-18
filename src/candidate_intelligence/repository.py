@@ -238,6 +238,44 @@ def list_pending_for_run(
         return list(cur.fetchall())
 
 
+def get_candidate_with_evaluation(
+    conn: psycopg.Connection, candidate_id: str
+) -> tuple["Candidate", "Evaluation"] | tuple[None, None]:
+    """Rehydrate a Candidate + Evaluation from one row. Returns (None, None)
+    if the row is missing or has no evaluation yet.
+
+    Used by the dashboard's "Generate post from this evaluation" endpoint.
+    """
+    from src.contracts.candidate import (
+        Candidate,
+        CandidateSource,
+        DiscoverySignals,
+        GithubSnapshot,
+        HackathonSnapshot,
+        RepoEnrichment,
+    )
+    from src.contracts.evaluation import Evaluation
+
+    row = get_candidate(conn, candidate_id)
+    if row is None or not row.get("evaluation"):
+        return None, None
+
+    candidate = Candidate(
+        candidate_id=row["id"],
+        project_id=row["project_id"],
+        canonical_repo_key=row["canonical_repo_key"],
+        run_id=row["run_id"],
+        source=CandidateSource(**row["source"]),
+        discovery=DiscoverySignals(**row["discovery"]) if row.get("discovery") else None,
+        github=GithubSnapshot(**row["github"]) if row.get("github") else None,
+        hackathon=HackathonSnapshot(**row["hackathon"]) if row.get("hackathon") else None,
+        enrichment=RepoEnrichment(**row["enrichment"]) if row.get("enrichment") else None,
+        already_posted=(row.get("deduplication") or {}).get("already_posted", False),
+    )
+    evaluation = Evaluation(**row["evaluation"])
+    return candidate, evaluation
+
+
 def get_candidate(conn: psycopg.Connection, candidate_id: str) -> dict | None:
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(

@@ -454,7 +454,7 @@ Responsibilities:
 | Responsibility | Description |
 |---|---|
 | Build image prompts | Convert project/evaluation data into visual prompts. |
-| Generate images | Use OpenAI image models or future providers. |
+| Generate images | Use OpenAI image models. |
 | Render platform-specific formats | Square, tall, story, carousel, thumbnail, newsletter header. |
 | Store media | Save JPEG/PNG/WebP files to object storage. |
 | Regenerate media | Allow alternate image generation without re-running evaluation. |
@@ -665,32 +665,30 @@ archived
 
 This can be a standalone service or a shared internal adapter at first.
 
-Its job is to centralize access to LLM and image providers.
+Its job is to centralize access to OpenAI LLM and image calls.
 
 Responsibilities:
 
 | Responsibility | Description |
 |---|---|
-| LLM calls | OpenAI, Claude, Gemini, or future providers. |
-| Image calls | OpenAI image generation or future image providers. |
+| LLM calls | OpenAI text generation. |
+| Image calls | OpenAI image generation. |
 | Rate limits | Prevent provider quota spikes. |
 | Retry policy | Retry transient provider failures. |
 | Prompt logging | Store prompt versions and output metadata. |
 | Cost tracking | Track tokens, images, model, cost estimate, and run ID. |
 | Safety filters | Apply prompt sanitation and content validation. |
 
-This avoids spreading provider-specific code across many services.
+This avoids spreading OpenAI-specific code across many services.
 
 Current code has:
 
 ```text
-ClaudeProvider
-GeminiProvider
 OpenAIProvider
 OpenAIImageClient
 ```
 
-In the new architecture, these become provider adapters behind one service:
+In the new architecture, these become adapters behind one service:
 
 ```text
 AIProviderGateway.generate_text(...)
@@ -1183,7 +1181,7 @@ Example failure states:
 candidate_discovery_failed
 candidate_enrichment_failed
 evaluation_parse_failed
-llm_provider_failed
+openai_provider_failed
 image_generation_failed
 package_validation_failed
 manual_review_rejected

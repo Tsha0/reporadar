@@ -25,15 +25,13 @@ playwright install chromium    # one-time browser download for the renderer
 cp .env.template .env
 ```
 
-Fill in the keys you have. Minimum to scan + evaluate: `GH_TOKEN` plus one LLM key. The default LLM provider is `openai`.
+Fill in the keys you have. Minimum to scan + evaluate: `GH_TOKEN` plus `OPENAI_API_KEY`. OpenAI is used for both LLM evaluation/text and image generation.
 
 | Variable | Required for | Where |
 |---|---|---|
 | `GH_TOKEN` | scanning | github.com → Settings → Developer Settings → PAT (no scopes needed for public repos) |
-| `LLM_PROVIDER` | evaluation | `claude`, `gemini`, or `openai` |
-| `ANTHROPIC_API_KEY` | `LLM_PROVIDER=claude` | console.anthropic.com |
-| `GEMINI_API_KEY` | `LLM_PROVIDER=gemini` | aistudio.google.com |
-| `OPENAI_API_KEY` | `LLM_PROVIDER=openai` | platform.openai.com |
+| `OPENAI_API_KEY` | LLM + image generation | platform.openai.com |
+| `OPENAI_MODEL` | LLM evaluation/text model | OpenAI model id, default `gpt-5.4-mini` |
 | `OUTPUT_DIR` | rendering | local path where rendered post images are saved (default `output/`) |
 
 ### 3. Verify
@@ -42,7 +40,7 @@ Fill in the keys you have. Minimum to scan + evaluate: `GH_TOKEN` plus one LLM k
 python -m src verify-env
 ```
 
-Pings GitHub, your chosen LLM, and confirms the output directory is writable. Reports issues.
+Pings GitHub, OpenAI, and confirms the output directory is writable. Reports issues.
 
 ## Commands
 
@@ -61,11 +59,11 @@ A successful `run` prints the saved post id and the local image path(s). The ima
 
 ```
 src/
-├── config.py           Settings.from_env(), validates LLM key matches provider
-├── db.py               sqlite3 conn, init_db, log_api_call (per-provider call tracking)
+├── config.py           Settings.from_env(), validates required keys
+├── db.py               sqlite3 conn, init_db, log_api_call (external API call tracking)
 ├── models.py           Pydantic frozen contracts: Candidate, HackathonCandidate, Evaluation, Caption, RenderResult, SavedPost
 ├── llm/
-│   └── provider.py     LLMProvider protocol + ClaudeProvider, GeminiProvider, OpenAIProvider, get_provider(settings)
+│   └── provider.py     LLMProvider protocol + OpenAIProvider, get_provider(settings)
 ├── sources/
 │   ├── github_repos/   Star-velocity scanner
 │   └── devpost/        BeautifulSoup scraper, robots.txt-respectful, rate-limited
@@ -100,7 +98,7 @@ src/
 - `hackathon_projects` — natural key `devpost_url`.
 - `evaluations` — `content_type ∈ {repo, hackathon}`, FKs to either source. `skip` boolean from the LLM.
 - `posts` — `media_type ∈ {single, carousel}`. `card_paths` is a JSON array of local file paths. `status` lifecycle: `pending → rendered` (or `failed`).
-- `api_calls` — source of truth for daily LLM budget. Service column is `claude` / `gemini` / `openai` / `github` / `devpost`.
+- `api_calls` — source of truth for daily LLM budget. Service column is `openai` / `github` / `devpost`.
 
 ## Tests
 

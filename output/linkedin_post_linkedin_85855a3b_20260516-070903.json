@@ -1,0 +1,48 @@
+{
+  "post_id": "post_linkedin_85855a3b",
+  "project_id": "proj_cc24a1c88677",
+  "candidate_id": "cand_f34b9707",
+  "run_id": "run_e2e8ad5e-9ceb-4427-985d-b71d15e29b64",
+  "channel": "linkedin",
+  "status": "ready_for_review",
+  "content": {
+    "channel": "linkedin",
+    "content_format": "commentary",
+    "text": "karpathy/autoresearch is a Python repo for AI agents that automatically run research loops around single-GPU nanochat training.\n\nThe surprising part is the scope: not \u201cuse an LLM to answer research questions,\u201d but use agents to operate the experiment loop itself. The repo context frames it as AI agents doing frontier-style research work that humans used to coordinate through meetings, notes, and manual iteration.\n\nWhy developers are paying attention: it points at a very concrete version of \u201cAI for AI research.\u201d The target is small enough to reason about \u2014 nanochat training on a single GPU \u2014 instead of an abstract cluster-scale agent swarm. That makes the idea easier to inspect, reproduce, or adapt if you already work with training scripts, eval loops, or experiment automation.\n\nAt a plain technical level, the interesting bit is the wrapper around training. The core workload is still model training. The \u201cautoresearch\u201d layer is about automating what happens around it: deciding what to try next, running the training job, observing outputs, and continuing the loop. Python is a natural fit here because it can glue together scripts, configs, logs, model runs, and agent calls.\n\nCaveat: there are no star or growth signals provided here, and the description is based on the repo context rather than independently verified results. So this is worth treating as an early/interesting research-engineering artifact, not proof that autonomous AI research is solved.\n\nIf you were building this kind of loop, what would you let the agent control first: hyperparameters, architecture changes, data, or eval design?\n\nFollow RepoRadar for more developer-focused repo finds.\n\n#Python #AIagents #MachineLearning #OpenSource",
+    "hook": null,
+    "body": null,
+    "cta": null,
+    "hashtags": [],
+    "source_links": [
+      "https://github.com/karpathy/autoresearch"
+    ],
+    "character_count": 1722,
+    "generated_at": "2026-05-16T07:08:13.718633Z",
+    "model": "gpt-5.5",
+    "prompt_version": "linkedin_repo_v4",
+    "content_version": 1
+  },
+  "media": [
+    {
+      "asset_id": "asset_c7954d03",
+      "asset_type": "poster",
+      "channel": "linkedin",
+      "local_path": "output/linkedin_karpathy-autoresearch_20260516-070813.jpg",
+      "uri": null,
+      "mime_type": "image/jpeg",
+      "width": 1024,
+      "height": 1536,
+      "aspect_ratio": "2:3",
+      "alt_text": "RepoRadar linkedin poster for karpathy/autoresearch. AI agents running research on single-GPU nanochat training automatically *One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of \"group meeting\".",
+      "image_prompt_version": "linkedin_poster_v3",
+      "generated_by": "openai_image",
+      "generated_at": "2026-05-16T07:09:03.108022Z",
+      "content_hash": null
+    }
+  ],
+  "source_links": [
+    "https://github.com/karpathy/autoresearch"
+  ],
+  "review_notes": null,
+  "created_at": "2026-05-16T07:09:03.108059Z"
+}

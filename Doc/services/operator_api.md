@@ -40,9 +40,10 @@ src/operator_api/
 | `evaluate` | `cmd_evaluate` | Run `candidate_intelligence.evaluate_pending_candidates` — score any unevaluated rows |
 | `run` | `cmd_run` | Run the full pipeline via `orchestrator.run_pipeline` |
 | `submit <url> [--channels=...]` | `cmd_submit` | Manual URL → enriched candidate → synthesized evaluation (no LLM scoring) → forced selection → Content Generation → Publishing, in one shot. Produces a ready-for-review post immediately, no LLM gate. |
+| `publish <post_id> [--dry-run]` | `cmd_publish` | Push one already-exported `post_instance` to its channel via the channel adapter. Today only `linkedin` is supported — calls `publishing.publish_post_to_linkedin` which hits the LinkedIn Posts API and updates the post_instance to `status='published'`. `--dry-run` prints what would be posted but does not contact LinkedIn. |
 | `serve` | `cmd_serve` | Start the Flask dashboard |
 | `daemon` | `cmd_daemon` | Start the APScheduler daemon (`scheduler.daemon.run_forever`) |
-| `verify-env` | `cmd_verify_env` | Smoke-test GitHub, LLM, output dir, Postgres — exit 1 if any fail |
+| `verify-env` | `cmd_verify_env` | Smoke-test GitHub, OpenAI, output dir, Postgres — exit 1 if any fail |
 
 Every handler follows the same pattern:
 
@@ -62,7 +63,7 @@ def cmd_xxx(args, settings):
             return 1
 ```
 
-That structure means every CLI command shows up in the dashboard's "recent runs" list with a `run_type` you can filter on (`scan_repos`, `scan_hackathons`, `evaluate`, `manual_submission`, `verify_env`, `daemon`, plus `daily_discovery` from the scheduler).
+That structure means every CLI command shows up in the dashboard's "recent runs" list with a `run_type` you can filter on (`scan_repos`, `scan_hackathons`, `evaluate`, `manual_submission`, `publish`, `verify_env`, `daemon`, plus `daily_discovery` from the scheduler).
 
 ### CLI workflow
 
@@ -76,12 +77,14 @@ stateDiagram-v2
 
     Dispatching --> CandidateIntelligenceCmd : scan-repos / scan-hackathons / evaluate / submit
     Dispatching --> OrchestratorCmd : run
+    Dispatching --> PublishingCmd : publish
     Dispatching --> SchedulerCmd : daemon
     Dispatching --> DashboardCmd : serve
     Dispatching --> VerifyCmd : verify-env
 
     CandidateIntelligenceCmd --> PrintingSummary
     OrchestratorCmd --> PrintingSummary
+    PublishingCmd --> PrintingSummary : publish_post_to_linkedin (or --dry-run)
     VerifyCmd --> PrintingSummary
     SchedulerCmd --> [*] : blocks until SIGTERM
     DashboardCmd --> [*] : blocks until Ctrl+C
@@ -95,19 +98,81 @@ stateDiagram-v2
 
 ## Dashboard surface
 
-Single page at `/` rendering five sections, plus a `/media/<filename>` route for serving rendered images:
+Single page at `/` rendering six sections, plus a `/media/<filename>` route for serving rendered images and three JSON mutation endpoints called by the inline dashboard JS:
 
-| Section | Source query |
-|---|---|
-| Posts awaiting review | `queries.get_recent_posts` — reads `posted_repositories.post_instances` (flattened by channel). Each row includes `first_path_basename` so the template can `<img src="{{ url_for('media', filename=...) }}">` the rendered poster inline, plus the full caption, hashtags, source links, alt text, and any validation warnings. |
-| Recent evaluations | `queries.get_recent_evaluations` — reads `candidate_repository_evaluations` where `evaluation IS NOT NULL` |
-| Scanned repos today | `queries.get_todays_scans` — reads `candidate_repository_evaluations` where `source_type='github_discovery'` and `created_at::date = CURRENT_DATE` |
-| Recent hackathon candidates | `queries.get_recent_hackathons` — same table, `source_type='devpost_discovery'` |
-| Recent runs | `queries.get_recent_runs` — reads `pipeline_runs` |
+| Section | Source query | Filter |
+|---|---|---|
+| Posts awaiting review | `queries.get_recent_posts` | `post_instance.status` in (`exported`, `ready_for_review`, `drafted`) |
+| Scheduled posts | `queries.get_scheduled_posts` | `post_instance.status='approved'`, sorted by `publication.scheduled_for` ASC |
+| Recent evaluations | `queries.get_recent_evaluations` | Always includes `candidate_id` + `has_post` so the dashboard can hide the "Generate" button when a `posted_repositories` row already exists for the canonical repo key |
+| Scanned repos today | `queries.get_todays_scans` | source_type=`github_discovery`, today |
+| Recent hackathon candidates | `queries.get_recent_hackathons` | source_type=`devpost_discovery` |
+| Recent runs | `queries.get_recent_runs` | `pipeline_runs` ordered by `started_at DESC` |
+
+Each post returned by `get_recent_posts` / `get_scheduled_posts` includes `first_path_basename` so the template can `<img src="{{ url_for('media', filename=...) }}">` the rendered poster inline, plus the full caption, hashtags, source links, alt text, image dimensions, and any validation warnings.
 
 The `/media/<path:filename>` route uses Flask's `send_from_directory(settings.output_dir, filename)`, which both serves the JPEG and refuses any `filename` that resolves outside the output dir (defense against path traversal).
 
-`app.py` is intentionally tiny: a Flask factory, two routes (`/` and `/media/...`), one template global (`score_class` for color-coding scores). All the SQL lives in `queries.py`.
+### Mutation endpoints
+
+JSON routes called from inline `fetch()` handlers in `dashboard.html`. All return small JSON bodies; the dashboard reloads on success.
+
+**Per-post + per-evaluation actions** (operator review workflow):
+
+| Endpoint | Body | Calls | Effect |
+|---|---|---|---|
+| `POST /api/posts/<post_id>/approve` | `{"scheduled_for": "<ISO datetime>"}` | `publishing.mark_post_approved` | Sets `post_instance.status='approved'`, writes `review.approved_by/at` and `publication.scheduled_for`. Card moves from "Posts awaiting review" → "Scheduled posts". |
+| `POST /api/posts/<post_id>/reject` | `{"reason"?: str}` (optional) | `publishing.mark_post_rejected` | Sets `post_instance.status='rejected'`. The instance stays in the JSONB array (audit) but is filtered out of the review queue. |
+| `POST /api/posts/<post_id>/publish-now` | `{}` | `publishing.publish_post_to_linkedin` | Uploads the post immediately via the LinkedIn Posts API (3-step image upload + post create). On success: `post_instance.status='published'`, `publication.external_post_url` + `external_post_id` filled, card moves to "Recently published". On failure: `status='failed'` with `publication.error_message`, card shows a "Retry upload" button. **LinkedIn only today.** Returns 400 on auth/scope/422 errors, 502 on upstream 5xx or wiring errors, 500 on unexpected exceptions. |
+| `POST /api/evaluations/<candidate_id>/generate` | `{"channels"?: [str]}` (default `["instagram", "linkedin"]`) | `candidate_intelligence.repository.get_candidate_with_evaluation` → `orchestrator.generate_post_for_existing_candidate` | Skips re-evaluation; force-selects the candidate; runs Content Generation per channel; publishes. New `posted_repositories` row appears in "Posts awaiting review". |
+
+**Pipeline-control actions** (top-of-dashboard "Pipeline controls" section):
+
+| Endpoint | Body | Calls | Effect |
+|---|---|---|---|
+| `POST /api/scan-repos` | `{}` | `candidate_intelligence.source_adapters.github_discovery.scan_github` | Runs the GitHub Search API queries, UPSERTs candidate rows. Returns `{eligible_count, sample[]}`. Free / fast (5-30s). |
+| `POST /api/scan-hackathons` | `{}` | `candidate_intelligence.source_adapters.devpost_discovery.scan_devpost` | Polite scrape of Devpost (1.5s between requests). Returns `{eligible_count, sample[]}`. Free but slow (30-90s). |
+| `POST /api/evaluate` | `{}` | `candidate_intelligence.evaluate_pending_candidates` | LLM-scores each pending candidate (capped at `max_evaluations_per_run × 2`). Returns `{evaluated_count, skipped_count, sample[]}`. **Costs LLM tokens.** |
+| `POST /api/run` | `{"channels"?: [str]}` | `orchestrator.run_pipeline` | Full pipeline: discover → enrich → evaluate → select → generate → publish. Returns the full orchestrator summary `{run_id, posted_id, channels, image_paths, ...}` or `{status: "no_eligible_candidate"}`. **Most expensive.** |
+| `POST /api/submit` | `{"url": str, "channels"?: [str]}` | `orchestrator.submit_url_and_generate` | Same as the CLI `submit` command: skip evaluation, submit URL → enrich → synthesize evaluation → content gen → publish. Returns `{candidate_id, canonical_repo_key, posted_id, channels}`. |
+
+All pipeline-control endpoints wrap their work in `start_run`/`finish_run` so the action appears in the dashboard's "Recent runs" section even if the browser disconnects. The `run_type` distinguishes them: `scan_repos`, `scan_hackathons`, `evaluate`, `daily_discovery`, `manual_submission`.
+
+The `Generate post →` button in the Recent Evaluations cards is hidden when `evaluation.has_post` is true. The `⤴ Upload to LinkedIn now` button is rendered on LinkedIn cards in "Posts awaiting review" and "Scheduled posts". Failed publishes get a `⤴ Retry upload` button in "Recently published".
+
+`app.py` is a Flask factory with 11 routes:
+
+```python
+GET  /                                # render dashboard
+GET  /media/<filename>                # serve rendered images
+
+# per-post / per-evaluation
+POST /api/posts/<post_id>/approve     # mark_post_approved + scheduled_for
+POST /api/posts/<post_id>/reject      # mark_post_rejected
+POST /api/posts/<post_id>/publish-now # publish_post_to_linkedin (LinkedIn only)
+POST /api/evaluations/<cid>/generate  # generate_post_for_existing_candidate
+
+# pipeline controls
+POST /api/scan-repos                  # candidate_intelligence.scan_github
+POST /api/scan-hackathons             # candidate_intelligence.scan_devpost
+POST /api/evaluate                    # candidate_intelligence.evaluate_pending_candidates
+POST /api/run                         # orchestrator.run_pipeline
+POST /api/submit                      # orchestrator.submit_url_and_generate
+```
+
+All SQL lives in `queries.py`. All cross-service calls live in the endpoint handlers — `app.py` directly imports `candidate_intelligence` (scanners + repository), `orchestrator` (pipeline + manual helpers), and `publishing` (mark_post_* + publish_post_to_linkedin).
+
+### Dashboard sections
+
+| Section | Source query | What it shows |
+|---|---|---|
+| Posts awaiting review | `queries.get_recent_posts` | status in (exported, ready_for_review, drafted) — Approve / Deny / Upload now (linkedin) buttons |
+| Scheduled posts | `queries.get_scheduled_posts` | status=approved, sorted by scheduled_for ASC — Upload now (linkedin) button |
+| Recently published | `queries.get_recent_published_posts` | status in (published, manually_posted, failed) — clickable external_post_url; failed posts show error + Retry button |
+| Recent evaluations | `queries.get_recent_evaluations` | All evaluations + `Generate post →` button when no posted_repositories row exists yet |
+| Scanned repos today | `queries.get_todays_scans` | github_discovery, today |
+| Recent hackathon candidates | `queries.get_recent_hackathons` | devpost_discovery |
+| Recent runs | `queries.get_recent_runs` | pipeline_runs |
 
 ```python
 @app.route("/")
@@ -138,9 +203,9 @@ Why this matters: when (not if) services move to separate processes / databases,
 A useful pattern worth calling out: `verify-env` is the only command that exercises every external dependency *without* doing real work.
 
 ```
-LLM_PROVIDER=openai
+OPENAI_MODEL=gpt-5.4-mini
 GitHub OK — 4987/5000 core requests remaining
-LLM (openai) OK — sample: 'OK'
+OpenAI LLM OK — sample: 'OK'
 Output dir OK — /Users/.../reporadar/output
 Postgres OK
 
@@ -189,9 +254,10 @@ flowchart LR
 | `cli.cmd_evaluate` | `candidate_intelligence.evaluate_pending_candidates` | Catch up evaluations |
 | `cli.cmd_submit` | `manual_submission.submit_manual` → `enrich_github_candidate` → `synthesize_evaluation_for_manual` → forced `SelectionDecision` → `content_generation.generate_post_package` (per channel) → `publishing.publish_packages` | Operator URL paste produces a post directly — no LLM evaluation gate |
 | `cli.cmd_run` | `orchestrator.run_pipeline` | Full daily pipeline manually |
+| `cli.cmd_publish` | `publishing.find_post_by_id` + `publishing.publish_post_to_linkedin` | Push one exported post to LinkedIn via the Posts API |
 | `cli.cmd_serve` | starts Flask app from `web.app.create_app` | Dashboard |
 | `cli.cmd_daemon` | `scheduler.daemon.run_forever` | Long-running scheduler |
-| `cli.cmd_verify_env` | `GithubClient`, `ai_gateway.get_llm_provider`, Postgres `SELECT 1` | Health checks |
+| `cli.cmd_verify_env` | `GithubClient`, OpenAI LLM provider, Postgres `SELECT 1` | Health checks |
 | `web.app.dashboard` route | `web.queries.*` | Read-only dashboard rendering |
 
 Nothing calls into Operator API. It is strictly an *initiating* and *displaying* service.
@@ -203,7 +269,7 @@ stateDiagram-v2
     [*] --> ParsingArgs
     ParsingArgs --> InvalidArgs : argparse error
     ParsingArgs --> LoadingSettings : valid
-    LoadingSettings --> ConfigError : missing env var / bad provider
+    LoadingSettings --> ConfigError : missing env var / bad OpenAI key
     LoadingSettings --> OpeningConn
     OpeningConn --> StartingRun : INSERT pipeline_runs
     StartingRun --> CallingService
@@ -229,7 +295,7 @@ python -m src serve --host 0.0.0.0 --port 8080 --debug
 
 | Symptom | Cause | Effect |
 |---|---|---|
-| `Configuration error: ...` to stderr | `Settings.from_env` raised (missing env var, bad LLM provider name, missing API key) | Exit 1 before any DB activity |
+| `Configuration error: ...` to stderr | `Settings.from_env` raised (missing env var or missing API key) | Exit 1 before any DB activity |
 | CLI command raises mid-flight | Downstream service failure | `finish_run(error=...)` and exit 1; the dashboard shows the failed run with the error message |
 | Dashboard query fails | Postgres unreachable, schema not applied | 500 error; visible in the Flask log; one bad section does not affect others (each is queried independently) |
 | `serve` port in use | Another process on the port | Flask raises `OSError`; exit immediately |

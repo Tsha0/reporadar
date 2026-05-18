@@ -109,13 +109,26 @@ def get_recent_hackathons(conn: psycopg.Connection, limit: int = 25) -> list[dic
 
 
 def get_recent_evaluations(conn: psycopg.Connection, limit: int = 25) -> list[dict]:
+    """Recent evaluated candidates + whether each already has a posted_repositories
+    row (so the dashboard can hide the "Generate post" button for ones already
+    in the review queue or published).
+    """
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
             SELECT
-                id, source_type, canonical_repo_key,
-                github, hackathon, discovery, evaluation
-            FROM candidate_repository_evaluations
+                cre.id            AS candidate_id,
+                cre.source_type,
+                cre.canonical_repo_key,
+                cre.github,
+                cre.hackathon,
+                cre.discovery,
+                cre.evaluation,
+                EXISTS (
+                    SELECT 1 FROM posted_repositories pr
+                    WHERE pr.canonical_repo_key = cre.canonical_repo_key
+                ) AS has_post
+            FROM candidate_repository_evaluations cre
             WHERE evaluation IS NOT NULL
             ORDER BY (evaluation ->> 'evaluated_at')::timestamptz DESC
             LIMIT %s
@@ -140,6 +153,8 @@ def get_recent_evaluations(conn: psycopg.Connection, limit: int = 25) -> list[di
         discovery = row.get("discovery") or {}
         out.append(
             {
+                "candidate_id": row["candidate_id"],
+                "has_post": bool(row["has_post"]),
                 "content_type": content_type,
                 "name": name,
                 "url": url,
@@ -151,20 +166,67 @@ def get_recent_evaluations(conn: psycopg.Connection, limit: int = 25) -> list[di
                 "overall_score": scores.get("overall"),
                 "skip": bool(evaluation.get("skip")),
                 "growth_pct": discovery.get("growth_percent"),
-                "llm_provider": evaluation.get("provider") or "—",
+                "provider": evaluation.get("provider") or "—",
                 "evaluated_at": _fmt_dt(evaluation.get("evaluated_at")),
             }
         )
     return out
 
 
-def get_recent_posts(conn: psycopg.Connection, limit: int = 20) -> list[dict]:
-    """Posted/exported items from `posted_repositories`, flattened by channel.
+_REVIEW_STATUSES = ("exported", "ready_for_review", "drafted")
+_SCHEDULED_STATUSES = ("approved",)
+_PUBLISHED_STATUSES = ("published", "manually_posted", "failed")
 
-    Each returned dict represents one channel post and is enriched enough that
-    the dashboard can render the image inline (via `/media/<filename>`), show
-    the full caption, hashtags, source links, and any validation warnings.
+
+def get_recent_posts(conn: psycopg.Connection, limit: int = 20) -> list[dict]:
+    """Posts in the *review* state — exported / ready_for_review / drafted.
+
+    Approved (scheduled) posts and rejected/manually-posted ones are excluded
+    here so the "Posts awaiting review" section is genuinely a review queue.
+    See `get_scheduled_posts` and `get_recent_published_posts` for the others.
     """
+    return _flatten_post_instances(conn, statuses=_REVIEW_STATUSES, limit=limit)
+
+
+def get_scheduled_posts(conn: psycopg.Connection, limit: int = 20) -> list[dict]:
+    """Approved post_instances with a `publication.scheduled_for` time set.
+
+    Ordered by scheduled time ascending so the soonest upload is at the top.
+    """
+    rows = _flatten_post_instances(conn, statuses=_SCHEDULED_STATUSES, limit=limit)
+    # Sort by scheduled_for ascending; rows without a scheduled_for sink to the bottom.
+    return sorted(
+        rows,
+        key=lambda r: r.get("scheduled_for") or "9999-12-31",
+    )
+
+
+def get_recent_published_posts(conn: psycopg.Connection, limit: int = 20) -> list[dict]:
+    """Posts that have actually been published — or whose API publish failed.
+
+    Includes:
+      - status='published'        (API publisher succeeded)
+      - status='manually_posted'  (operator copy-pasted, marked it posted)
+      - status='failed'           (API publisher errored; needs operator action)
+
+    Failed posts are returned with their error_message so the dashboard can
+    surface "Retry" affordances.
+    """
+    rows = _flatten_post_instances(conn, statuses=_PUBLISHED_STATUSES, limit=limit)
+    # Most-recent first — falls back to updated_at when posted_at is unavailable.
+    return sorted(
+        rows,
+        key=lambda r: r.get("posted_at") or r.get("updated_at") or "",
+        reverse=True,
+    )
+
+
+def _flatten_post_instances(
+    conn: psycopg.Connection,
+    *,
+    statuses: tuple[str, ...],
+    limit: int,
+) -> list[dict]:
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(
             """
@@ -190,6 +252,8 @@ def get_recent_posts(conn: psycopg.Connection, limit: int = 20) -> list[dict]:
             or h.get("devpost_url")
         )
         for inst in row.get("post_instances") or []:
+            if inst.get("status") not in statuses:
+                continue
             media = inst.get("media") or []
             paths = [a.get("local_path") for a in media if a.get("local_path")]
             first_path = paths[0] if paths else None
@@ -225,12 +289,29 @@ def get_recent_posts(conn: psycopg.Connection, limit: int = 20) -> list[dict]:
                     "first_image_dims": first_dims,
                     "slide_count": len(paths),
                     "external_post_url": publication.get("external_post_url"),
+                    "external_post_id": publication.get("external_post_id"),
+                    "publishing_mode": publication.get("publishing_mode"),
+                    "scheduled_for": _fmt_scheduled(publication.get("scheduled_for")),
+                    "posted_at": _fmt_dt(publication.get("posted_at")),
+                    "publication_error": publication.get("error_message"),
                     "review_notes": review.get("review_notes"),
+                    "approved_at": _fmt_dt(review.get("approved_at")),
                     "updated_at": _fmt_dt(row["updated_at"]),
-                    "error_message": None,
+                    "error_message": publication.get("error_message"),
                 }
             )
     return out
+
+
+def _fmt_scheduled(value) -> str | None:
+    """Display-only scheduled timestamp formatter."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return str(value)
 
 
 def _fmt_dt(value) -> str:

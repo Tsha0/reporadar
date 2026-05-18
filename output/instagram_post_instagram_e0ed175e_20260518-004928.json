@@ -1,0 +1,55 @@
+{
+  "post_id": "post_instagram_e0ed175e",
+  "project_id": "proj_e009818bb7b4",
+  "candidate_id": "cand_288c1a14",
+  "run_id": "run_4d97c906-dd5f-45c0-926e-e82bf719ef61",
+  "channel": "instagram",
+  "status": "ready_for_review",
+  "content": {
+    "channel": "instagram",
+    "content_format": "caption",
+    "text": "An agent harness built in the open, not behind a launch post.\n\noh-my-openagent is a dev-focused harness for running and shaping coding agents. The interesting bit is the workflow: features, fixes, and triage happen live with an AI assistant on a customized OpenClaw fork. Messy, transparent, useful.\n\nWatch the repo if you care about agent tooling.\n\n#devtools #aiagents #opensource #github #codingagents #openclaw\n\nLinks:\nGitHub: https://github.com/code-yeongyu/oh-my-openagent",
+    "hook": "An agent harness built in the open, not behind a launch post.",
+    "body": "oh-my-openagent is a dev-focused harness for running and shaping coding agents. The interesting bit is the workflow: features, fixes, and triage happen live with an AI assistant on a customized OpenClaw fork. Messy, transparent, useful.",
+    "cta": "Watch the repo if you care about agent tooling.",
+    "hashtags": [
+      "devtools",
+      "aiagents",
+      "opensource",
+      "github",
+      "codingagents",
+      "openclaw"
+    ],
+    "source_links": [
+      "GitHub: https://github.com/code-yeongyu/oh-my-openagent"
+    ],
+    "character_count": 477,
+    "generated_at": "2026-05-18T00:47:31.807919Z",
+    "model": "gpt-5.5",
+    "prompt_version": "instagram_repo_caption_v3",
+    "content_version": 1
+  },
+  "media": [
+    {
+      "asset_id": "asset_c129f971",
+      "asset_type": "poster",
+      "channel": "instagram",
+      "local_path": "output/instagram_code-yeongyu-oh-my-openagent_20260518-004731.jpg",
+      "uri": null,
+      "mime_type": "image/jpeg",
+      "width": 1024,
+      "height": 1024,
+      "aspect_ratio": "1:1",
+      "alt_text": "RepoRadar instagram poster for code-yeongyu/oh-my-openagent. omo; the best agent harness - previously oh-my-opencode > [!TIP] > **Building in Public** > > The maintainer builds and maintains oh-my-openagent in real-time with Jobdori, an AI assistant running on a heavily customized fork of OpenClaw.",
+      "image_prompt_version": "instagram_square_v3",
+      "generated_by": "openai_image",
+      "generated_at": "2026-05-18T00:48:28.177734Z",
+      "content_hash": null
+    }
+  ],
+  "source_links": [
+    "https://github.com/code-yeongyu/oh-my-openagent"
+  ],
+  "review_notes": null,
+  "created_at": "2026-05-18T00:48:28.177801Z"
+}

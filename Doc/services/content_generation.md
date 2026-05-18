@@ -206,8 +206,8 @@ From `Settings`:
 | Setting | Default | Effect |
 |---|---|---|
 | `output_dir` | `output/` | Where JPEGs are written |
-| `openai_api_key` | (required) | Image generation; also LLM if `llm_provider=openai` |
-| `llm_provider` | `openai` | Text generation backend (`claude` / `gemini` / `openai`) |
+| `openai_api_key` | (required) | LLM text generation and image generation |
+| `openai_model` | `gpt-5.4-mini` | Text generation backend model |
 
 ## Out of scope today
 

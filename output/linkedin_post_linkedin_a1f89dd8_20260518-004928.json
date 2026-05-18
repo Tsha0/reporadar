@@ -1,0 +1,48 @@
+{
+  "post_id": "post_linkedin_a1f89dd8",
+  "project_id": "proj_e009818bb7b4",
+  "candidate_id": "cand_288c1a14",
+  "run_id": "run_4d97c906-dd5f-45c0-926e-e82bf719ef61",
+  "channel": "linkedin",
+  "status": "ready_for_review",
+  "content": {
+    "channel": "linkedin",
+    "content_format": "commentary",
+    "text": "oh-my-openagent is a TypeScript agent harness with an unusual meta-workflow: the maintainer says every feature, fix, and issue triage is being built live with an AI assistant in Discord.\n\nThe repo was previously called oh-my-opencode, and the current framing is \u201como; the best agent harness.\u201d That is a big claim, but the direction is interesting for developers working with AI coding agents.\n\nWhy people may pay attention: the project sits in the messy middle of agent workflows. Its topics point at Claude Code, Claude skills, OpenAI/ChatGPT, Anthropic, Gemini, Cursor, OpenCode, orchestration, TUI, and IDE usage. In other words, it looks less like \u201cone more chatbot\u201d and more like glue for running and coordinating agent-based development flows.\n\nThe plain technical idea: use a TypeScript harness as the control layer around coding-agent tools and workflows. Instead of treating each agent interface as a separate silo, omo appears to be exploring the orchestration layer around them: terminal interaction, IDE-adjacent usage, and multi-agent/tooling coordination.\n\nThe most interesting part might be the process, not the code: the README says the maintainer is building it in public with Jobdori, an AI assistant running on a heavily customized fork of OpenClaw, with work happening live in Discord.\n\nCaveat: there are no star or growth signals available here, and the \u201cbuilding in public\u201d workflow is README-reported. This is early-signal, operator-flagged, not proven adoption yet.\n\nWould you use a shared harness across coding agents, or do you prefer each agent to stay in its own tool?\n\nFollow RepoRadar for more developer repos worth inspecting.\n\n#AIagents #TypeScript #DevTools #OpenSource",
+    "hook": null,
+    "body": null,
+    "cta": null,
+    "hashtags": [],
+    "source_links": [
+      "https://github.com/code-yeongyu/oh-my-openagent"
+    ],
+    "character_count": 1702,
+    "generated_at": "2026-05-18T00:48:42.885221Z",
+    "model": "gpt-5.5",
+    "prompt_version": "linkedin_repo_v4",
+    "content_version": 1
+  },
+  "media": [
+    {
+      "asset_id": "asset_ffa25087",
+      "asset_type": "poster",
+      "channel": "linkedin",
+      "local_path": "output/linkedin_code-yeongyu-oh-my-openagent_20260518-004842.jpg",
+      "uri": null,
+      "mime_type": "image/jpeg",
+      "width": 1024,
+      "height": 1536,
+      "aspect_ratio": "2:3",
+      "alt_text": "RepoRadar linkedin poster for code-yeongyu/oh-my-openagent. omo; the best agent harness - previously oh-my-opencode > [!TIP] > **Building in Public** > > The maintainer builds and maintains oh-my-openagent in real-time with Jobdori, an AI assistant running on a heavily customized fork of OpenClaw.",
+      "image_prompt_version": "linkedin_poster_v3",
+      "generated_by": "openai_image",
+      "generated_at": "2026-05-18T00:49:27.941274Z",
+      "content_hash": null
+    }
+  ],
+  "source_links": [
+    "https://github.com/code-yeongyu/oh-my-openagent"
+  ],
+  "review_notes": null,
+  "created_at": "2026-05-18T00:49:27.941320Z"
+}

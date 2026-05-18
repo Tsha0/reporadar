@@ -189,6 +189,7 @@ The breakdown is persisted with the candidate row so future selections remain au
 | `operator_api.cli.cmd_scan_hackathons` | `source_adapters.devpost_discovery.scan_devpost` | CLI-driven hackathon discovery |
 | `operator_api.cli.cmd_evaluate` | `evaluate_pending_candidates` | Catch up on unevaluated rows |
 | `operator_api.cli.cmd_submit` | `source_adapters.manual_submission.submit_manual` + `enrichment.enrich_github_candidate` + `evaluation.synthesize_evaluation_for_manual` | Operator paste workflow — skips LLM scoring, produces a post directly |
+| `operator_api.web.app` (dashboard) | `scan_github`, `scan_devpost`, `evaluate_pending_candidates` (and the orchestrator helpers that wrap this service) | Pipeline-control routes — `/api/scan-repos`, `/api/scan-hackathons`, `/api/evaluate`, `/api/run`, `/api/submit` |
 | `orchestrator.pipeline._candidate_from_db` | `repository.get_candidate` | Rehydrate the winner before Content Generation |
 
 Nothing outside this service writes to `candidate_repository_evaluations`. Publishing's `set_post_link` is the only narrow exception — it updates one specific JSONB column after the post is exported.

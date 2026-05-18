@@ -32,12 +32,10 @@ Render then prompts you for every env var that has `sync: false` (secrets). Past
 |---|---|
 | `DATABASE_URL` | Supabase project → Settings → Database → **Transaction pooler** URL (port 6543). URL-encode special chars in the password — `@` → `%40`. |
 | `GH_TOKEN` | github.com/settings/tokens → new fine-grained PAT, no scopes needed for public repos |
-| `OPENAI_API_KEY` | platform.openai.com → API keys. Required even on `LLM_PROVIDER=claude/gemini` (image gen always uses OpenAI). |
-| `ANTHROPIC_API_KEY` | Only if `LLM_PROVIDER=claude` |
-| `GEMINI_API_KEY` | Only if `LLM_PROVIDER=gemini` |
+| `OPENAI_API_KEY` | platform.openai.com → API keys. Required for both LLM calls and image generation. |
 | LinkedIn / Instagram / image-host keys | Optional — only needed if you'll click "Publish now" in the dashboard. Leave blank to run in manual-export mode. |
 
-Non-secret values (`LLM_PROVIDER`, `SCHEDULE_HOUR`, thresholds, etc.) are already set in `render.yaml`. You can edit them later in the Render UI without touching code.
+Non-secret values (`OPENAI_MODEL`, `SCHEDULE_HOUR`, thresholds, etc.) are already set in `render.yaml`. You can edit them later in the Render UI without touching code.
 
 ### 3. Deploy
 
@@ -57,7 +55,7 @@ You can rename the service or wire up a custom domain from the Render dashboard.
 After the first deploy is green:
 
 1. Open the dashboard URL. The dashboard should render (initially empty).
-2. From **Render Shell** (Service → Shell tab) run `python -m src verify-env`. This pings GitHub, the LLM provider, the output disk, and Postgres. All four should report OK.
+2. From **Render Shell** (Service → Shell tab) run `python -m src verify-env`. This pings GitHub, OpenAI, the output disk, and Postgres. All four should report OK.
 3. Trigger a one-shot run from the dashboard: click **Run pipeline** (`POST /api/run`). Takes 1–3 minutes (LLM + image API calls). When it finishes, refresh the dashboard — the new post appears under "Recent posts" with a thumbnail served from the persistent disk.
 
 ## How the scheduler runs in production

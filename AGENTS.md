@@ -4,7 +4,7 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## What this is
 
-Discovery + post-generation pipeline for promising open-source projects. Discovers GitHub repos via the Search API + hackathon projects via Devpost scrape, evaluates both pools with a pluggable LLM (Codex, Gemini, or OpenAI), generates per-channel captions and posters (Instagram 1:1, LinkedIn 2:3), and writes one `posted_repositories` row per selected project. **Posts are saved locally for human review** — no automatic upload or publishing. APScheduler daemon runs the pipeline daily.
+Discovery + post-generation pipeline for promising open-source projects. Discovers GitHub repos via the Search API + hackathon projects via Devpost scrape, evaluates both pools with OpenAI, generates per-channel captions and posters (Instagram 1:1, LinkedIn 2:3), and writes one `posted_repositories` row per selected project. **Posts are saved locally for human review** — no automatic upload or publishing. APScheduler daemon runs the pipeline daily.
 
 The codebase is organized as v2 microservice modules (see `Doc/reporadar_v2_architecture.md`). Each top-level folder under `src/` is one service.
 
@@ -38,7 +38,7 @@ Services are organized as **modular microservices that talk synchronously via Py
 src/
 ├── common/                # Settings, Postgres connection, logger, ID helpers
 ├── contracts/             # Cross-service Pydantic models (frozen)
-├── ai_gateway/            # LLM + image-provider adapters
+├── ai_gateway/            # OpenAI LLM + image adapters
 ├── candidate_intelligence/   # Discovery + enrichment + evaluation + dedup
 │   ├── source_adapters/{github_discovery,devpost_discovery,manual_submission}
 │   ├── enrichment/
@@ -59,7 +59,7 @@ src/
 
 - **Each service owns its data section.** `candidate_intelligence/repository.py` is the only writer of `candidate_repository_evaluations`; `publishing/repository.py` is the only writer of `posted_repositories`. The dashboard reads via `operator_api/web/queries.py` — never directly across service tables.
 - **Orchestrator contains no business logic.** It assembles a run by calling each service's public entry point (`discover_and_evaluate`, `select_top_candidate`, `generate_content`, `render_media`, `build_post_package`, `publish_packages`). Adding a new channel = adding a new media profile + content template + channel validator; the orchestrator doesn't change.
-- **`OPENAI_API_KEY` is always required** even when `LLM_PROVIDER` is `Codex` or `gemini`, because image generation goes through `OpenAIImageClient` regardless. `Settings.provider_key_present` enforces this at config-load time.
+- **`OPENAI_API_KEY` is always required** for both LLM calls and image generation. `Settings.openai_key_present` enforces this at config-load time.
 - **Discovery upserts every search hit** (eligible or not) to `candidate_repository_evaluations` so the next run has a baseline for delta calc.
 
 ### Data model (v2)
@@ -82,9 +82,9 @@ Plus operational `pipeline_runs` and `api_calls` tables.
 
 `canonical_repo_key` is the universal cross-source identity: `github:owner/repo` or `devpost:<slug>`. `project_id` is derived deterministically from `canonical_repo_key` via SHA-1 (see `src/common/ids.project_id_for`), so the same repo discovered across many runs maps to one project identity without a lookup table.
 
-### LLM provider abstraction (`src/ai_gateway/llm/`)
+### OpenAI gateway (`src/ai_gateway/`)
 
-`LLM_PROVIDER=Codex|gemini|openai` selects between `ClaudeProvider`, `GeminiProvider`, and `OpenAIProvider`. Default is `openai`. All providers expose `generate(prompt, system) -> str` and log to `api_calls` via `_BaseProvider._log_call`.
+OpenAI is the only supported AI provider. `OpenAIProvider` handles text/LLM calls and `OpenAIImageClient` handles image generation. Both log to `api_calls`.
 
 ### Channels
 

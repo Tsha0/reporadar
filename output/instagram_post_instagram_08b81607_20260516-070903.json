@@ -1,0 +1,56 @@
+{
+  "post_id": "post_instagram_08b81607",
+  "project_id": "proj_cc24a1c88677",
+  "candidate_id": "cand_f34b9707",
+  "run_id": "run_e2e8ad5e-9ceb-4427-985d-b71d15e29b64",
+  "channel": "instagram",
+  "status": "ready_for_review",
+  "content": {
+    "channel": "instagram",
+    "content_format": "caption",
+    "text": "Karpathy is automating the research loop\n\nautoresearch points agents at nanochat experiments on a single GPU, then lets them propose runs, execute training, read results, and iterate. Less \u201cAGI lab in a box,\u201d more a sharp testbed for agentic science: can models do the boring loop without faking progress?\n\nWatch the loop, not the hype.\n\n#ai #llm #machinelearning #aiagents #researchautomation #nanochat #karpathy\n\nLinks:\nGitHub: https://github.com/karpathy/autoresearch",
+    "hook": "Karpathy is automating the research loop",
+    "body": "autoresearch points agents at nanochat experiments on a single GPU, then lets them propose runs, execute training, read results, and iterate. Less \u201cAGI lab in a box,\u201d more a sharp testbed for agentic science: can models do the boring loop without faking progress?",
+    "cta": "Watch the loop, not the hype.",
+    "hashtags": [
+      "ai",
+      "llm",
+      "machinelearning",
+      "aiagents",
+      "researchautomation",
+      "nanochat",
+      "karpathy"
+    ],
+    "source_links": [
+      "GitHub: https://github.com/karpathy/autoresearch"
+    ],
+    "character_count": 470,
+    "generated_at": "2026-05-16T07:06:58.138599Z",
+    "model": "gpt-5.5",
+    "prompt_version": "instagram_repo_caption_v3",
+    "content_version": 1
+  },
+  "media": [
+    {
+      "asset_id": "asset_1f53da95",
+      "asset_type": "poster",
+      "channel": "instagram",
+      "local_path": "output/instagram_karpathy-autoresearch_20260516-070658.jpg",
+      "uri": null,
+      "mime_type": "image/jpeg",
+      "width": 1024,
+      "height": 1024,
+      "aspect_ratio": "1:1",
+      "alt_text": "RepoRadar instagram poster for karpathy/autoresearch. AI agents running research on single-GPU nanochat training automatically *One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of \"group meeting\".",
+      "image_prompt_version": "instagram_square_v3",
+      "generated_by": "openai_image",
+      "generated_at": "2026-05-16T07:07:55.340806Z",
+      "content_hash": null
+    }
+  ],
+  "source_links": [
+    "https://github.com/karpathy/autoresearch"
+  ],
+  "review_notes": null,
+  "created_at": "2026-05-16T07:07:55.340845Z"
+}

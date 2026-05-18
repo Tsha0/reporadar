@@ -4,29 +4,24 @@ import argparse
 import sys
 from pathlib import Path
 
-from datetime import datetime, timezone
-
 from src.ai_gateway.factory import get_llm_provider
-from src.candidate_intelligence.enrichment import enrich_github_candidate
-from src.candidate_intelligence.evaluation import synthesize_evaluation_for_manual
-from src.candidate_intelligence.repository import set_evaluation, upsert_candidate
-from src.candidate_intelligence.service import (
-    discover_and_evaluate,
-    evaluate_pending_candidates,
-)
+from src.candidate_intelligence.service import evaluate_pending_candidates
 from src.candidate_intelligence.source_adapters.devpost_discovery.scanner import scan_devpost
 from src.candidate_intelligence.source_adapters.github_discovery.client import GithubClient
 from src.candidate_intelligence.source_adapters.github_discovery.scanner import scan_github
-from src.candidate_intelligence.source_adapters.manual_submission import submit_manual
 from src.common.config import Settings
 from src.common.db import connect
-from src.common.ids import selection_id
 from src.common.logger import get_logger
-from src.content_generation import generate_post_package
-from src.contracts.selection import RankingBreakdown, SelectionDecision
+from src.orchestrator.manual import submit_url_and_generate
 from src.orchestrator.pipeline import run_pipeline
 from src.orchestrator.runs import finish_run, start_run
-from src.publishing import publish_packages
+from src.publishing import (
+    InstagramPublishError,
+    LinkedInPublishError,
+    find_post_by_id,
+    publish_post_to_instagram,
+    publish_post_to_linkedin,
+)
 
 
 def cmd_scan_repos(args, settings: Settings) -> int:
@@ -128,20 +123,11 @@ def cmd_run(args, settings: Settings) -> int:
 
 
 def cmd_submit(args, settings: Settings) -> int:
-    """Manually submit a project URL and generate ready-for-review posts.
+    """Manually submit a project URL → ready-for-review posts.
 
-    Skips the LLM evaluation phase entirely — operator submission is an
-    implicit "feature this". The flow is:
-
-        1. submit_manual            (write candidate row from GitHub/Devpost)
-        2. enrich_github_candidate  (README + commits + issues, GitHub only)
-        3. synthesize_evaluation    (placeholder Evaluation, no LLM scoring)
-        4. forced SelectionDecision (no ranking pool — operator chose this row)
-        5. generate_post_package    (per channel: text → media → packaging)
-        6. publish_packages         (write posted_repositories row + sidecar JSON)
-
-    The result is one or more PostPackages in `posted_repositories` with
-    status="exported", visible in the dashboard's "Posts awaiting review".
+    Delegates to `orchestrator.submit_url_and_generate`, which is also used by
+    the dashboard's `POST /api/submit` endpoint. Skips the LLM evaluation
+    phase entirely (operator submission is an implicit "feature this").
     """
     channels = (
         [c.strip() for c in args.channels.split(",") if c.strip()]
@@ -153,75 +139,13 @@ def cmd_submit(args, settings: Settings) -> int:
         run_id = start_run(conn, run_type="manual_submission", requested_by="operator")
         log = get_logger("reporadar.submit", run_id)
         try:
-            # 1. Discover via manual_submission adapter.
-            candidate = submit_manual(conn, settings, run_id, args.url)
+            candidate, _, posted_id, packages, _ = submit_url_and_generate(
+                conn, settings, run_id, args.url, channels=channels, operator="operator",
+            )
             print(
                 f"Submitted candidate {candidate.candidate_id} "
                 f"({candidate.canonical_repo_key})"
             )
-
-            # 2. Enrich GitHub candidates so synthesize_evaluation has README signal.
-            if candidate.github:
-                gh_client = GithubClient(conn, run_id, settings.gh_token)
-                enrichment = enrich_github_candidate(candidate.github.full_name, gh_client)
-                candidate = candidate.model_copy(update={"enrichment": enrichment})
-                upsert_candidate(conn, candidate)
-
-            # 3. Synthesize Evaluation (no LLM scoring) and persist it on the
-            #    candidate row so the dashboard's evaluations section also shows it.
-            evaluation = synthesize_evaluation_for_manual(candidate)
-            set_evaluation(
-                conn,
-                candidate_id=candidate.candidate_id,
-                evaluation_payload=evaluation.model_dump(mode="json"),
-                skip=False,
-            )
-
-            # 4. Forced SelectionDecision — operator's pick, no ranking pool.
-            selection = SelectionDecision(
-                selection_id=selection_id(),
-                candidate_id=candidate.candidate_id,
-                project_id=candidate.project_id,
-                run_id=run_id,
-                ranking_version="manual_v1",
-                ranking_score=9.0,
-                rank_in_run=1,
-                total_candidates_in_run=1,
-                score_breakdown=RankingBreakdown(evaluation_overall_score=9.0),
-                ranking_reasons=["Manually submitted by operator."],
-                eligible=True,
-                selected=True,
-                selected_for_channels=channels,
-                selected_at=datetime.now(timezone.utc),
-            )
-
-            # 5. Content Generation per channel.
-            provider = get_llm_provider(settings, conn, run_id)
-            packages = []
-            for channel in channels:
-                try:
-                    package = generate_post_package(
-                        conn, settings, run_id, candidate, evaluation, provider, channel=channel
-                    )
-                    packages.append(package)
-                except Exception as exc:
-                    log.exception("Channel %s failed: %s", channel, exc)
-                    print(f"  Channel {channel} failed: {exc}", file=sys.stderr)
-
-            if not packages:
-                finish_run(conn, run_id, error="All channels failed")
-                return 1
-
-            # 6. Publish (posted_repositories row + sidecar JSONs to output_dir).
-            posted_id, json_paths = publish_packages(
-                conn,
-                settings,
-                candidate=candidate,
-                evaluation=evaluation,
-                selection=selection,
-                packages=packages,
-            )
-
             finish_run(conn, run_id)
             print(f"\nGenerated {len(packages)} post(s) ready for review → posted_id {posted_id}")
             for package in packages:
@@ -230,9 +154,92 @@ def cmd_submit(args, settings: Settings) -> int:
                     print(f"    image: {asset.local_path}")
             print("\nReview in dashboard: python -m src serve")
             return 0
+        except RuntimeError as exc:
+            finish_run(conn, run_id, error=str(exc))
+            log.error("Submit failed: %s", exc)
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
         except Exception as exc:
             finish_run(conn, run_id, error=str(exc))
             log.error("Submit failed: %s", exc)
+            print(f"FAILED: {exc}", file=sys.stderr)
+            return 1
+
+
+def cmd_publish(args, settings: Settings) -> int:
+    """Publish an already-exported PostPackage to its channel.
+
+    Supports `linkedin` (Posts API) and `instagram` (Graph API). Routes
+    based on `post_instance.platform`. Looks up the post by its `post_id`,
+    calls the channel adapter, and updates the DB.
+
+    With --dry-run, only loads the post and prints what *would* be posted —
+    no network calls.
+    """
+    with connect(settings) as conn:
+        run_id = start_run(conn, run_type="publish", requested_by="operator")
+        log = get_logger("reporadar.publish", run_id)
+        try:
+            row = find_post_by_id(conn, args.post_id)
+            if row is None:
+                print(f"No post found with post_id={args.post_id!r}", file=sys.stderr)
+                finish_run(conn, run_id, error="post not found")
+                return 1
+            _, instance = row
+            channel = instance.get("platform")
+
+            print(f"Post {args.post_id} (channel={channel}, status={instance.get('status')})")
+            content = instance.get("content") or {}
+            print(f"  text ({content.get('character_count')} chars): {content.get('text', '')[:120]}…")
+            for asset in instance.get("media") or []:
+                print(f"  image: {asset.get('local_path')}")
+
+            if args.dry_run:
+                print(f"\n--dry-run: not contacting {channel}.")
+                finish_run(conn, run_id)
+                return 0
+
+            if channel == "linkedin":
+                try:
+                    external_id, permalink = publish_post_to_linkedin(
+                        conn, settings, post_id=args.post_id, operator="cli"
+                    )
+                except LinkedInPublishError as exc:
+                    print(f"\nLinkedIn publish failed: {exc}", file=sys.stderr)
+                    if exc.body:
+                        print(f"  body: {exc.body[:500]}", file=sys.stderr)
+                    finish_run(conn, run_id, error=str(exc))
+                    return 1
+                id_label = "URN"
+            elif channel == "instagram":
+                try:
+                    external_id, permalink = publish_post_to_instagram(
+                        conn, settings, post_id=args.post_id, operator="cli"
+                    )
+                except InstagramPublishError as exc:
+                    print(f"\nInstagram publish failed: {exc}", file=sys.stderr)
+                    if exc.body:
+                        print(f"  body: {exc.body[:500]}", file=sys.stderr)
+                    finish_run(conn, run_id, error=str(exc))
+                    return 1
+                id_label = "Media ID"
+            else:
+                print(
+                    f"Channel {channel!r} is not supported by `publish` "
+                    "(supported: linkedin, instagram).",
+                    file=sys.stderr,
+                )
+                finish_run(conn, run_id, error="unsupported channel")
+                return 1
+
+            print("\nPublished.")
+            print(f"  {id_label}: {external_id}")
+            print(f"  Permalink: {permalink}")
+            finish_run(conn, run_id)
+            return 0
+        except Exception as exc:
+            finish_run(conn, run_id, error=str(exc))
+            log.error("Publish failed: %s", exc)
             print(f"FAILED: {exc}", file=sys.stderr)
             return 1
 
@@ -259,7 +266,7 @@ def cmd_daemon(args, settings: Settings) -> int:
 def cmd_verify_env(args, settings: Settings) -> int:
     with connect(settings) as conn:
         run_id = start_run(conn, run_type="verify_env")
-        print(f"LLM_PROVIDER={settings.llm_provider}")
+        print(f"OPENAI_MODEL={settings.openai_model}")
         issues: list[str] = []
 
         try:
@@ -273,9 +280,9 @@ def cmd_verify_env(args, settings: Settings) -> int:
         try:
             provider = get_llm_provider(settings, conn, run_id)
             sample = provider.generate("Reply with the single word OK.", system="Be terse.")
-            print(f"LLM ({provider.name}) OK — sample: {sample[:60]!r}")
+            print(f"OpenAI LLM OK — sample: {sample[:60]!r}")
         except Exception as exc:
-            issues.append(f"LLM: {exc}")
+            issues.append(f"OpenAI LLM: {exc}")
 
         out = Path(settings.output_dir)
         try:
@@ -328,6 +335,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Comma-separated list of channels (default: instagram,linkedin)",
     )
 
+    publish_p = sub.add_parser(
+        "publish",
+        help="Publish an exported PostPackage to its channel (linkedin or instagram)",
+    )
+    publish_p.add_argument("post_id", help="post_id from posted_repositories.post_instances")
+    publish_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Load and inspect the post but do not contact the channel API",
+    )
+
     serve_p = sub.add_parser("serve", help="Start the read-only monitoring dashboard")
     serve_p.add_argument("--host", default="127.0.0.1")
     serve_p.add_argument("--port", type=int, default=8000)
@@ -353,6 +371,7 @@ def main(argv: list[str] | None = None) -> int:
         "evaluate": cmd_evaluate,
         "run": cmd_run,
         "submit": cmd_submit,
+        "publish": cmd_publish,
         "serve": cmd_serve,
         "daemon": cmd_daemon,
         "verify-env": cmd_verify_env,

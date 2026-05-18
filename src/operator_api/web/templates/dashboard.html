@@ -10,15 +10,85 @@
   <header>
     <h1>RepoRadar</h1>
     <span class="date">{{ today }}</span>
-    <span class="ro-pill">read-only · posts saved locally for review</span>
+    <span class="ro-pill">human-in-the-loop review</span>
   </header>
 
   <main>
+
+    <!-- ── PIPELINE CONTROLS ────────────────────────────────────── -->
+    <section class="pipeline-controls">
+      <h2>Pipeline controls</h2>
+      <div class="control-grid">
+
+        <div class="control-row">
+          <div class="control-label">
+            <strong>Discovery</strong>
+            <span class="control-help">Scan sources for new candidates. Writes rows to <code>candidate_repository_evaluations</code>.</span>
+          </div>
+          <div class="control-buttons">
+            <button type="button" class="btn btn-secondary" id="btn-scan-repos"
+                    onclick="scanRepos(this)">
+              ⌕ Scan GitHub repos
+            </button>
+            <button type="button" class="btn btn-secondary" id="btn-scan-hackathons"
+                    onclick="scanHackathons(this)">
+              ⌕ Scan Devpost hackathons
+            </button>
+          </div>
+        </div>
+
+        <div class="control-row">
+          <div class="control-label">
+            <strong>Evaluation</strong>
+            <span class="control-help">LLM-score discovered candidates that haven't been evaluated yet.</span>
+          </div>
+          <div class="control-buttons">
+            <button type="button" class="btn btn-secondary" id="btn-evaluate"
+                    onclick="evaluatePending(this)">
+              ⚖ Evaluate pending
+            </button>
+          </div>
+        </div>
+
+        <div class="control-row">
+          <div class="control-label">
+            <strong>Full pipeline</strong>
+            <span class="control-help">discover → enrich → evaluate → select → generate → publish, in one go. Expensive — LLM + image API.</span>
+          </div>
+          <div class="control-buttons">
+            <button type="button" class="btn btn-primary" id="btn-run"
+                    onclick="runFullPipeline(this)">
+              ▶ Run full pipeline
+            </button>
+          </div>
+        </div>
+
+        <div class="control-row">
+          <div class="control-label">
+            <strong>Manual submission</strong>
+            <span class="control-help">Paste a GitHub or Devpost URL. Skips evaluation; produces a ready-for-review post.</span>
+          </div>
+          <form class="control-form" onsubmit="submitManualUrl(event)">
+            <input type="url" id="submit-url"
+                   placeholder="https://github.com/owner/repo or https://devpost.com/software/..."
+                   required>
+            <button type="submit" class="btn btn-primary" id="btn-submit">
+              ⤵ Submit &amp; generate
+            </button>
+          </form>
+        </div>
+
+      </div>
+
+      <div id="action-log" class="action-log" hidden></div>
+    </section>
+
+    <!-- ── POSTS AWAITING REVIEW ─────────────────────────────────── -->
     <section>
       <h2>Posts awaiting review <span class="count">{{ posts|length }}</span></h2>
       {% if posts %}
         {% for p in posts %}
-        <article class="post-card">
+        <article class="post-card" data-post-id="{{ p.id }}">
           <div class="post-image">
             {% if p.first_path_basename %}
               <a href="{{ url_for('media', filename=p.first_path_basename) }}" target="_blank" rel="noopener">
@@ -80,26 +150,150 @@
               <div class="review-notes"><strong>Validation:</strong> {{ p.review_notes }}</div>
             {% endif %}
 
-            {% if p.external_post_url %}
-              <div class="post-meta">Posted at: <a href="{{ p.external_post_url }}" target="_blank" rel="noopener">{{ p.external_post_url }}</a></div>
-            {% endif %}
-
-            {% if p.error_message %}
-              <div class="error-msg">{{ p.error_message }}</div>
-            {% endif %}
+            <div class="post-actions">
+              {% if p.channel == 'linkedin' %}
+                <button type="button" class="btn btn-accent"
+                        onclick="publishNow('{{ p.id }}', '{{ p.channel }}', '{{ p.name|e }}', this)">
+                  ⤴ Upload to LinkedIn now
+                </button>
+              {% endif %}
+              <button type="button" class="btn btn-primary"
+                      onclick="openApproveModal('{{ p.id }}', '{{ p.channel }}', '{{ p.name|e }}')">
+                Approve & schedule
+              </button>
+              <button type="button" class="btn btn-danger"
+                      onclick="rejectPost('{{ p.id }}', '{{ p.name|e }}')">
+                Deny
+              </button>
+            </div>
           </div>
         </article>
         {% endfor %}
       {% else %}
-        <p class="empty">No posts yet.</p>
+        <p class="empty">No posts awaiting review.</p>
       {% endif %}
     </section>
 
+    <!-- ── SCHEDULED POSTS ──────────────────────────────────────── -->
+    {% if scheduled %}
+    <section>
+      <h2>Scheduled posts <span class="count">{{ scheduled|length }}</span></h2>
+      {% for p in scheduled %}
+      <article class="post-card scheduled-card" data-post-id="{{ p.id }}">
+        <div class="post-image">
+          {% if p.first_path_basename %}
+            <a href="{{ url_for('media', filename=p.first_path_basename) }}" target="_blank" rel="noopener">
+              <img src="{{ url_for('media', filename=p.first_path_basename) }}"
+                   alt="{{ p.first_alt_text or 'scheduled post image' }}">
+            </a>
+          {% endif %}
+        </div>
+        <div class="post-body">
+          <div class="post-header">
+            <span class="status status-approved">approved</span>
+            <span class="channel-pill channel-{{ p.channel }}">{{ p.channel }}</span>
+            {% if p.subject_url %}
+              <a class="repo-name" href="{{ p.subject_url }}" target="_blank" rel="noopener">{{ p.name }}</a>
+            {% else %}
+              <span class="repo-name">{{ p.name }}</span>
+            {% endif %}
+            {% if p.scheduled_for %}
+              <span class="scheduled-pill">⏱ {{ p.scheduled_for }}</span>
+            {% endif %}
+          </div>
+          {% if p.caption %}
+            <details class="caption-block">
+              <summary>Caption preview</summary>
+              <pre class="caption">{{ p.caption }}</pre>
+            </details>
+          {% endif %}
+          {% if p.channel == 'linkedin' %}
+            <div class="post-actions">
+              <button type="button" class="btn btn-accent btn-small"
+                      onclick="publishNow('{{ p.id }}', '{{ p.channel }}', '{{ p.name|e }}', this)">
+                ⤴ Upload now
+              </button>
+            </div>
+          {% endif %}
+          {% if p.first_path %}
+            <div class="post-meta"><code>{{ p.first_path }}</code></div>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    <!-- ── RECENTLY PUBLISHED ───────────────────────────────────── -->
+    {% if published %}
+    <section>
+      <h2>Recently published <span class="count">{{ published|length }}</span></h2>
+      {% for p in published %}
+      <article class="post-card published-card status-card-{{ p.status }}" data-post-id="{{ p.id }}">
+        <div class="post-image">
+          {% if p.first_path_basename %}
+            <a href="{{ url_for('media', filename=p.first_path_basename) }}" target="_blank" rel="noopener">
+              <img src="{{ url_for('media', filename=p.first_path_basename) }}"
+                   alt="{{ p.first_alt_text or 'published post image' }}">
+            </a>
+          {% endif %}
+        </div>
+        <div class="post-body">
+          <div class="post-header">
+            <span class="status status-{{ p.status }}">{{ p.status }}</span>
+            <span class="channel-pill channel-{{ p.channel }}">{{ p.channel }}</span>
+            {% if p.subject_url %}
+              <a class="repo-name" href="{{ p.subject_url }}" target="_blank" rel="noopener">{{ p.name }}</a>
+            {% else %}
+              <span class="repo-name">{{ p.name }}</span>
+            {% endif %}
+            {% if p.posted_at %}
+              <span class="kind">posted {{ p.posted_at }}</span>
+            {% endif %}
+            {% if p.publishing_mode %}
+              <span class="kind">via {{ p.publishing_mode }}</span>
+            {% endif %}
+          </div>
+
+          {% if p.external_post_url %}
+            <div class="published-link">
+              <strong>Live:</strong>
+              <a href="{{ p.external_post_url }}" target="_blank" rel="noopener">{{ p.external_post_url }}</a>
+            </div>
+          {% endif %}
+
+          {% if p.status == 'failed' %}
+            <div class="error-msg">
+              <strong>Publish failed:</strong> {{ p.publication_error or '(no error message recorded)' }}
+            </div>
+            {% if p.channel == 'linkedin' %}
+              <div class="post-actions">
+                <button type="button" class="btn btn-accent btn-small"
+                        onclick="publishNow('{{ p.id }}', '{{ p.channel }}', '{{ p.name|e }}', this)">
+                  ⤴ Retry upload
+                </button>
+              </div>
+            {% endif %}
+          {% endif %}
+
+          {% if p.caption %}
+            <details class="caption-block">
+              <summary>Caption</summary>
+              <pre class="caption">{{ p.caption }}</pre>
+            </details>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    <!-- ── RECENT EVALUATIONS ───────────────────────────────────── -->
     <section>
       <h2>Recent evaluations <span class="count">{{ evaluations|length }}</span></h2>
       {% if evaluations %}
         {% for ev in evaluations %}
-        <div class="card">
+        <div class="card eval-card" data-candidate-id="{{ ev.candidate_id }}">
           <div class="card-header">
             {% if ev.url %}<a href="{{ ev.url }}" target="_blank" rel="noopener" class="repo-name">{{ ev.name }}</a>{% else %}<span class="repo-name">{{ ev.name }}</span>{% endif %}
             <span class="kind">{{ ev.content_type }}</span>
@@ -109,7 +303,16 @@
               <span class="score {{ score_class(ev.overall_score) }}" title="Overall">⭐ {{ ev.overall_score }}</span>
             </div>
             {% if ev.skip %}<span class="status status-rejected">skip</span>{% endif %}
-            <span class="kind">{{ ev.llm_provider }}</span>
+            <span class="kind">{{ ev.provider }}</span>
+            <div class="card-header-spacer"></div>
+            {% if ev.has_post %}
+              <span class="kind kind-muted">post exists</span>
+            {% elif not ev.skip %}
+              <button type="button" class="btn btn-secondary btn-small"
+                      onclick="generateFromEvaluation('{{ ev.candidate_id }}', '{{ ev.name|e }}', this)">
+                Generate post →
+              </button>
+            {% endif %}
           </div>
           {% if ev.growth_pct %}<div class="stat-line">+{{ ev.growth_pct | int }}%</div>{% endif %}
           <p class="summary">{{ ev.summary }}</p>
@@ -123,6 +326,7 @@
       {% endif %}
     </section>
 
+    <!-- ── SCANNED REPOS TODAY ──────────────────────────────────── -->
     <section>
       <h2>Scanned repos today <span class="count">{{ scans|length }}</span></h2>
       {% if scans %}
@@ -149,6 +353,7 @@
       {% else %}<p class="empty">No scans today.</p>{% endif %}
     </section>
 
+    <!-- ── RECENT HACKATHON CANDIDATES ──────────────────────────── -->
     <section>
       <h2>Recent hackathon candidates <span class="count">{{ hackathons|length }}</span></h2>
       {% if hackathons %}
@@ -172,6 +377,7 @@
       {% else %}<p class="empty">No hackathon candidates yet.</p>{% endif %}
     </section>
 
+    <!-- ── RECENT RUNS ──────────────────────────────────────────── -->
     <section>
       <h2>Recent runs</h2>
       {% if runs %}
@@ -194,5 +400,254 @@
       {% else %}<p class="empty">No pipeline runs yet.</p>{% endif %}
     </section>
   </main>
+
+  <!-- ── APPROVE / SCHEDULE MODAL ───────────────────────────────── -->
+  <dialog id="approve-modal" class="modal">
+    <form method="dialog">
+      <h3>Schedule post</h3>
+      <p class="modal-subtitle" id="approve-modal-subtitle"></p>
+      <label class="modal-label" for="scheduled-for">Upload at</label>
+      <input type="datetime-local" id="scheduled-for" required>
+      <p class="modal-help">Local time. The dashboard records the time on the post — uploading still happens manually until an API publisher is wired in.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeApproveModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="confirmApprove()">Schedule</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ── INLINE JS ─────────────────────────────────────────────── -->
+  <script>
+  // ── Pipeline controls ────────────────────────────────────────
+  function logAction(message, klass = 'info') {
+    const log = document.getElementById('action-log');
+    log.hidden = false;
+    log.className = `action-log action-log-${klass}`;
+    log.textContent = message;
+  }
+
+  async function runAction(button, label, url, opts = {}) {
+    const original = button.textContent;
+    const original_form_label = opts.button_label || original;
+    button.disabled = true;
+    button.textContent = opts.runningLabel || `${label}…`;
+    logAction(`Running: ${label}…`, 'info');
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(opts.body || {}),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        logAction(`${label} failed: ${data.error || resp.statusText}`, 'error');
+        button.disabled = false;
+        button.textContent = original_form_label;
+        return null;
+      }
+      logAction(opts.formatSuccess ? opts.formatSuccess(data) : `${label} done.`, 'success');
+      if (opts.reloadOnSuccess !== false) {
+        // Brief pause so the operator can read the success message before reload.
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        button.disabled = false;
+        button.textContent = original_form_label;
+      }
+      return data;
+    } catch (err) {
+      logAction(`${label} failed: ${err.message}`, 'error');
+      button.disabled = false;
+      button.textContent = original_form_label;
+      return null;
+    }
+  }
+
+  function scanRepos(button) {
+    return runAction(button, 'Scan GitHub repos', '/api/scan-repos', {
+      runningLabel: 'Scanning GitHub…',
+      formatSuccess: (d) => `Scanned GitHub — ${d.eligible_count} eligible candidate(s).`,
+    });
+  }
+
+  function scanHackathons(button) {
+    return runAction(button, 'Scan Devpost hackathons', '/api/scan-hackathons', {
+      runningLabel: 'Scraping Devpost… (may take a minute)',
+      formatSuccess: (d) => `Scanned Devpost — ${d.eligible_count} eligible candidate(s).`,
+    });
+  }
+
+  function evaluatePending(button) {
+    if (!confirm('Evaluate all pending candidates with the LLM?\nThis calls the LLM (costs money) for each un-evaluated candidate, capped at ' +
+                 'max_evaluations_per_run × 2.')) return;
+    return runAction(button, 'Evaluate pending', '/api/evaluate', {
+      runningLabel: 'LLM evaluating…',
+      formatSuccess: (d) =>
+        `Evaluated ${d.evaluated_count} candidate(s)` +
+        (d.skipped_count ? ` (${d.skipped_count} skipped by LLM).` : '.'),
+    });
+  }
+
+  function runFullPipeline(button) {
+    if (!confirm('Run the full pipeline?\n\nDiscover → enrich → evaluate → select → generate → publish.\n' +
+                 'This calls the LLM and OpenAI image API. May take 1-3 minutes.')) return;
+    return runAction(button, 'Run full pipeline', '/api/run', {
+      runningLabel: 'Running pipeline… (this can take a few minutes)',
+      formatSuccess: (d) => {
+        if (d.status === 'no_eligible_candidate') return 'Run finished — no eligible candidate today.';
+        return `Run done — posted_id=${d.posted_id}, channels=${(d.channels || []).join(', ')}.`;
+      },
+    });
+  }
+
+  async function submitManualUrl(event) {
+    event.preventDefault();
+    const url = document.getElementById('submit-url').value.trim();
+    if (!url) return;
+    if (!confirm(`Submit ${url} and generate Instagram + LinkedIn posts?\nThis calls the LLM and OpenAI image API.`)) return;
+    const button = document.getElementById('btn-submit');
+    return runAction(button, 'Submit URL', '/api/submit', {
+      body: {url},
+      runningLabel: 'Generating posts…',
+      formatSuccess: (d) =>
+        `Submitted ${d.canonical_repo_key} → posted_id=${d.posted_id}, channels=${(d.channels || []).join(', ')}.`,
+    });
+  }
+
+  // Approve flow ──────────────────────────────────────────────────
+  let pendingApprovePostId = null;
+
+  function openApproveModal(postId, channel, subject) {
+    pendingApprovePostId = postId;
+    document.getElementById('approve-modal-subtitle').textContent =
+      `[${channel}] ${subject}`;
+    const input = document.getElementById('scheduled-for');
+    // Default to 1 hour from now (local time).
+    const t = new Date(Date.now() + 60 * 60 * 1000);
+    const local = new Date(t.getTime() - t.getTimezoneOffset() * 60000)
+      .toISOString().slice(0, 16);
+    input.value = local;
+    document.getElementById('approve-modal').showModal();
+    input.focus();
+  }
+
+  function closeApproveModal() {
+    document.getElementById('approve-modal').close();
+    pendingApprovePostId = null;
+  }
+
+  async function confirmApprove() {
+    if (!pendingApprovePostId) return;
+    const scheduledFor = document.getElementById('scheduled-for').value;
+    if (!scheduledFor) return;
+    try {
+      const resp = await fetch(`/api/posts/${pendingApprovePostId}/approve`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({scheduled_for: scheduledFor + ':00'}),
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        alert(`Approve failed: ${data.error || resp.statusText}`);
+        return;
+      }
+      closeApproveModal();
+      location.reload();
+    } catch (err) {
+      alert(`Approve failed: ${err.message}`);
+    }
+  }
+
+  // Reject flow ───────────────────────────────────────────────────
+  async function rejectPost(postId, subject) {
+    if (!confirm(`Deny "${subject}"? It will disappear from the review queue.`)) return;
+    try {
+      const resp = await fetch(`/api/posts/${postId}/reject`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: '{}',
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        alert(`Deny failed: ${data.error || resp.statusText}`);
+        return;
+      }
+      location.reload();
+    } catch (err) {
+      alert(`Deny failed: ${err.message}`);
+    }
+  }
+
+  // Upload-now flow ──────────────────────────────────────────────
+  async function publishNow(postId, channel, subject, button) {
+    if (channel !== 'linkedin') {
+      alert(`Upload now is currently LinkedIn-only (got channel="${channel}").`);
+      return;
+    }
+    if (!confirm(`Upload "${subject}" to LinkedIn now?\nThis is immediate and visible on your feed.`)) return;
+    const originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Uploading…';
+    try {
+      const resp = await fetch(`/api/posts/${postId}/publish-now`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: '{}',
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        const detail = data.body ? `${data.error}\n\nLinkedIn said:\n${data.body}` : (data.error || resp.statusText);
+        alert(`Upload failed: ${detail}`);
+        button.disabled = false;
+        button.textContent = originalLabel;
+        return;
+      }
+      // Success — flash the URL then reload.
+      if (data.external_post_url) {
+        alert(`Published!\n\nLive at:\n${data.external_post_url}`);
+      }
+      location.reload();
+    } catch (err) {
+      alert(`Upload failed: ${err.message}`);
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
+  }
+
+  // Generate-from-evaluation flow ────────────────────────────────
+  async function generateFromEvaluation(candidateId, subject, button) {
+    if (!confirm(`Generate Instagram + LinkedIn posts for "${subject}"?\nThis calls the LLM and OpenAI image API.`)) return;
+    const originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Generating…';
+    try {
+      const resp = await fetch(`/api/evaluations/${candidateId}/generate`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: '{}',
+      });
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        alert(`Generate failed: ${data.error || resp.statusText}`);
+        button.disabled = false;
+        button.textContent = originalLabel;
+        return;
+      }
+      location.reload();
+    } catch (err) {
+      alert(`Generate failed: ${err.message}`);
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
+  }
+
+  // Close modal on backdrop click
+  document.getElementById('approve-modal').addEventListener('click', (e) => {
+    const modal = e.currentTarget;
+    const rect = modal.getBoundingClientRect();
+    const inside = rect.top <= e.clientY && e.clientY <= rect.bottom
+                && rect.left <= e.clientX && e.clientX <= rect.right;
+    if (!inside) closeApproveModal();
+  });
+  </script>
 </body>
 </html>

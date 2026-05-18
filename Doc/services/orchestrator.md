@@ -17,12 +17,22 @@ Per v2 §2.3 it contains **workflow logic only** — no prompt templates, no sco
 
 ```
 src/orchestrator/
-├── __init__.py
-├── pipeline.py                   # run_pipeline + rehydration helpers
+├── __init__.py                   # exports run_pipeline + generate_post_for_existing_candidate
+├── pipeline.py                   # run_pipeline + rehydration helpers (scheduled / CLI runs)
+├── manual.py                     # generate_post_for_existing_candidate (single-candidate path)
 └── runs.py                       # start_run / finish_run — pipeline_runs CRUD
 ```
 
-That's the entire service. ~120 lines total — by design.
+That's the entire service. ~180 lines total — by design.
+
+### Two workflow entry points
+
+| Entry point | Caller | Inputs | What it skips |
+|---|---|---|---|
+| `pipeline.run_pipeline(conn, settings, channels=None, requested_by="manual")` | Scheduler daemon, `cli.cmd_run` | none — runs the daily flow | nothing |
+| `manual.generate_post_for_existing_candidate(conn, settings, run_id, candidate, evaluation, channels, provider, ranking_reason)` | `cli.cmd_submit`, dashboard's `/api/evaluations/<id>/generate` | one already-known candidate + its evaluation | discovery, enrichment, evaluation, ranking pool |
+
+Both end in the same Content Generation → Publishing flow. The manual helper builds a synthetic `SelectionDecision` (rank 1 of 1, ranking_version `manual_v1` by default) so the downstream services can't tell it apart from a scheduled run's winner.
 
 ## Workflow
 

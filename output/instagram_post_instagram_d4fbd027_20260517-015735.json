@@ -1,0 +1,56 @@
+{
+  "post_id": "post_instagram_d4fbd027",
+  "project_id": "proj_535ebd1671c9",
+  "candidate_id": "cand_88fcb78e",
+  "run_id": "run_8b99a686-b00f-47ba-8c09-a48e8f82be9d",
+  "channel": "instagram",
+  "status": "ready_for_review",
+  "content": {
+    "channel": "instagram",
+    "content_format": "caption",
+    "text": "OpenClaw wants to be your local-first AI assistant\n\nIt runs across macOS, iOS, and Android, then meets you in the channels you already use. Voice in, voice out, plus a live Canvas when text is not enough. The Gateway is the control plane; the assistant is the product.\n\nStar it if you want AI you own.\n\n#ai #opensource #localfirst #devtools #assistant #macos #android\n\nLinks:\nGitHub: https://github.com/openclaw/openclaw",
+    "hook": "OpenClaw wants to be your local-first AI assistant",
+    "body": "It runs across macOS, iOS, and Android, then meets you in the channels you already use. Voice in, voice out, plus a live Canvas when text is not enough. The Gateway is the control plane; the assistant is the product.",
+    "cta": "Star it if you want AI you own.",
+    "hashtags": [
+      "ai",
+      "opensource",
+      "localfirst",
+      "devtools",
+      "assistant",
+      "macos",
+      "android"
+    ],
+    "source_links": [
+      "GitHub: https://github.com/openclaw/openclaw"
+    ],
+    "character_count": 420,
+    "generated_at": "2026-05-17T01:55:49.610777Z",
+    "model": "gpt-5.5",
+    "prompt_version": "instagram_repo_caption_v3",
+    "content_version": 1
+  },
+  "media": [
+    {
+      "asset_id": "asset_4b06e302",
+      "asset_type": "poster",
+      "channel": "instagram",
+      "local_path": "output/instagram_openclaw-openclaw_20260517-015549.jpg",
+      "uri": null,
+      "mime_type": "image/jpeg",
+      "width": 1024,
+      "height": 1024,
+      "aspect_ratio": "1:1",
+      "alt_text": "RepoRadar instagram poster for openclaw/openclaw. Your own personal AI assistant.",
+      "image_prompt_version": "instagram_square_v3",
+      "generated_by": "openai_image",
+      "generated_at": "2026-05-17T01:56:42.813637Z",
+      "content_hash": null
+    }
+  ],
+  "source_links": [
+    "https://github.com/openclaw/openclaw"
+  ],
+  "review_notes": null,
+  "created_at": "2026-05-17T01:56:42.813672Z"
+}

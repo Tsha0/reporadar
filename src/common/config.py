@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import os
-from typing import Literal
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, field_validator, model_validator
 
 load_dotenv()
-
-LLMProviderName = Literal["claude", "gemini", "openai"]
 
 
 class Settings(BaseModel):
@@ -24,13 +21,8 @@ class Settings(BaseModel):
     max_candidates_per_run: int = 15
     devpost_max_projects_per_run: int = 25
 
-    # --- LLM provider ---
-    llm_provider: LLMProviderName = "openai"
-    anthropic_api_key: str | None = None
-    gemini_api_key: str | None = None
+    # --- OpenAI ---
     openai_api_key: str | None = None
-    claude_model: str = "claude-sonnet-4-6"
-    gemini_model: str = "gemini-2.0-flash"
     openai_model: str = "gpt-5.4-mini"
     max_evaluations_per_run: int = 5
 
@@ -42,13 +34,44 @@ class Settings(BaseModel):
     schedule_jitter_minutes: int = 15
     timezone_name: str = "UTC"
 
+    # --- publishing: LinkedIn API ---
+    # Optional. When set, `python -m src publish <post_id>` can post an
+    # already-exported PostPackage to LinkedIn via the Posts API. See
+    # Doc/services/publishing.md → "LinkedIn API adapter".
+    linkedin_client_id: str | None = None
+    linkedin_client_secret: str | None = None
+    linkedin_access_token: str | None = None
+    linkedin_actor_urn: str | None = None
+    linkedin_api_version: str = "202604"
+
+    # --- publishing: Instagram Graph API ---
+    # Optional. When set, `python -m src publish <post_id>` can post an
+    # already-exported PostPackage to an Instagram Business/Creator account
+    # via the Facebook Graph API. The image is uploaded to the configured
+    # image host first (Instagram requires a public HTTPS URL — it does not
+    # accept binary uploads). See Doc/services/publishing.md → "Instagram
+    # Graph API adapter".
+    ig_access_token: str | None = None
+    ig_business_account_id: str | None = None
+    ig_app_id: str | None = None
+    ig_app_secret: str | None = None
+    ig_api_version: str = "v21.0"
+
+    # --- publishing: S3-compatible image host (required for IG publishing) ---
+    # Works with Cloudflare R2 (set image_host_endpoint), AWS S3 (leave
+    # endpoint blank), Backblaze B2 (set endpoint), or any S3-compatible
+    # service. Not used by the LinkedIn adapter — LinkedIn accepts binary
+    # uploads directly.
+    image_host_endpoint: str | None = None
+    image_host_bucket: str | None = None
+    image_host_region: str = "auto"
+    image_host_public_base_url: str | None = None
+    image_host_access_key: str | None = None
+    image_host_secret_key: str | None = None
+
     @property
     def llm_model(self) -> str:
-        if self.llm_provider == "claude":
-            return self.claude_model
-        if self.llm_provider == "openai":
-            return self.openai_model
-        return self.gemini_model
+        return self.openai_model
 
     @field_validator("gh_token")
     @classmethod
@@ -65,24 +88,14 @@ class Settings(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def provider_key_present(self) -> "Settings":
-        if self.llm_provider == "claude" and not self.anthropic_api_key:
-            raise ValueError("LLM_PROVIDER=claude requires ANTHROPIC_API_KEY")
-        if self.llm_provider == "gemini" and not self.gemini_api_key:
-            raise ValueError("LLM_PROVIDER=gemini requires GEMINI_API_KEY")
+    def openai_key_present(self) -> "Settings":
         if not self.openai_api_key:
-            raise ValueError("OPENAI_API_KEY is required for image generation")
+            raise ValueError("OPENAI_API_KEY is required for LLM and image generation")
         return self
 
     @classmethod
     def from_env(cls) -> "Settings":
-        provider_raw = os.environ.get("LLM_PROVIDER", "openai").lower().strip()
-        if provider_raw not in ("claude", "gemini", "openai"):
-            raise RuntimeError(
-                f"LLM_PROVIDER must be 'claude', 'gemini', or 'openai' (got {provider_raw!r})"
-            )
-
-        for var in ("GH_TOKEN", "DATABASE_URL"):
+        for var in ("GH_TOKEN", "DATABASE_URL", "OPENAI_API_KEY"):
             if not os.environ.get(var):
                 raise RuntimeError(
                     f"Missing required environment variable: {var}.\n"
@@ -100,18 +113,27 @@ class Settings(BaseModel):
             devpost_max_projects_per_run=int(
                 os.environ.get("DEVPOST_MAX_PROJECTS_PER_RUN", "25")
             ),
-            llm_provider=provider_raw,
-            anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
-            gemini_api_key=os.environ.get("GEMINI_API_KEY"),
             openai_api_key=os.environ.get("OPENAI_API_KEY"),
-            claude_model=os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6"),
-            gemini_model=os.environ.get("GEMINI_MODEL")
-            or os.environ.get("LLM_MODEL", "gemini-2.0-flash"),
-            openai_model=os.environ.get("OPENAI_MODEL")
-            or os.environ.get("LLM_MODEL", "gpt-5.4-mini"),
+            openai_model=os.environ.get("OPENAI_MODEL", "gpt-5.4-mini"),
             max_evaluations_per_run=int(os.environ.get("MAX_EVALUATIONS_PER_RUN", "5")),
             output_dir=os.environ.get("OUTPUT_DIR", "output"),
             schedule_hour=int(os.environ.get("SCHEDULE_HOUR", "6")),
             schedule_jitter_minutes=int(os.environ.get("SCHEDULE_JITTER_MINUTES", "15")),
             timezone_name=os.environ.get("TIMEZONE", "UTC"),
+            linkedin_client_id=os.environ.get("LINKEDIN_CLIENT_ID"),
+            linkedin_client_secret=os.environ.get("LINKEDIN_CLIENT_SECRET"),
+            linkedin_access_token=os.environ.get("LINKEDIN_ACCESS_TOKEN"),
+            linkedin_actor_urn=os.environ.get("LINKEDIN_ACTOR_URN"),
+            linkedin_api_version=os.environ.get("LINKEDIN_API_VERSION", "202604"),
+            ig_access_token=os.environ.get("IG_ACCESS_TOKEN"),
+            ig_business_account_id=os.environ.get("IG_BUSINESS_ACCOUNT_ID"),
+            ig_app_id=os.environ.get("IG_APP_ID"),
+            ig_app_secret=os.environ.get("IG_APP_SECRET"),
+            ig_api_version=os.environ.get("IG_API_VERSION", "v21.0"),
+            image_host_endpoint=os.environ.get("IMAGE_HOST_ENDPOINT"),
+            image_host_bucket=os.environ.get("IMAGE_HOST_BUCKET"),
+            image_host_region=os.environ.get("IMAGE_HOST_REGION", "auto"),
+            image_host_public_base_url=os.environ.get("IMAGE_HOST_PUBLIC_BASE_URL"),
+            image_host_access_key=os.environ.get("IMAGE_HOST_ACCESS_KEY"),
+            image_host_secret_key=os.environ.get("IMAGE_HOST_SECRET_KEY"),
         )
